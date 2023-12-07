@@ -1,0 +1,279 @@
+---
+title: "L07 Layers"
+subtitle: "Data Visualization (STAT 302)" 
+author: "Olivia Harbison"
+
+format:
+  html:
+    toc: true
+    embed-resources: true
+    code-fold: show
+    link-external-newwindow: true
+    fig-dpi: 300
+
+execute:
+  warning: false
+
+from: markdown+emoji 
+---
+
+## Overview
+
+The goal of this lab is to explore more plots in `ggplot2` and continue to leverage the use of various layers to build complex and well annotated plots. 
+
+## Datasets
+
+We'll be using the `tech_stocks.rda` dataset which is already in the `/data` subdirectory in our **data_vis_labs** project. 
+
+We have a new dataset, `NU_admission_data.csv`, which will need to be downloaded and added to our `/data` subdirectory. 
+
+We will also be using the `mpg` dataset which comes packaged with `ggplot2` --- use `?ggplot2::mpg` to access its codebook.
+
+```{r}
+#| label: load-pkgs-data
+
+# load package(s)
+library(tidyverse)
+library(patchwork)
+
+# load datasets
+admission <- read_csv("data/NU_admission_data.csv")
+load("data/tech_stocks.rda")
+```
+
+## Exercise 1
+
+Using `mpg` and the `class_dat` dataset created below, recreate the following graphic as precisely as possible in two different ways.
+
+*Hints:*
+
+- Transparency is 0.6
+- Horizontal spread is 0.1
+- Larger points are 5
+- Larger points are "red"
+
+```{r}
+#| label: ex-1
+
+# additional dataset for plot
+class_dat <- mpg %>%
+  group_by(class) %>%
+  summarise(
+    n = n(),
+    mean_hwy = mean(hwy),
+    label = str_c("n = ", n, sep = "")
+  )
+```
+
+### Plot 1 -- using `mean_hwy`
+
+::: {.callout-tip icon=false}
+
+## Solution
+```{r}
+ggplot(mpg, aes(class, hwy)) +
+  geom_jitter(width = 0.1) +
+  geom_point(
+    data = class_dat,
+    aes(x = class, y = mean_hwy),
+    color = "red",
+    size = 5,
+    alpha = 0.6
+  ) +
+  labs(x = "Vehicle class",
+       y = "Highway miles per gallon") +
+  geom_text(data = class_dat, aes(y = 10, label = label)) +
+  theme_minimal()
+```
+
+:::
+
+### Plot 2 -- not using `mean_hwy`
+
+::: {.callout-tip icon=false}
+
+## Solution
+```{r}
+
+ggplot(mpg, aes(x = class, y = hwy)) +
+  geom_jitter(width = 0.1) +
+  geom_point(
+    stat = "summary",
+    fun = mean,
+    color = "red",
+    alpha = 0.6,
+    size = 5
+  ) +
+  labs(x = "Vehicle class",
+       y = "Highway miles per gallon") +
+  geom_text(data = class_dat, aes(y = 10, label = label)) +
+  theme_minimal()
+
+```
+
+:::
+
+## Exercise 2
+
+Using the `perc_increase` dataset derived from the `tech_stocks` dataset, recreate the following graphic as precisely as possible.
+
+*Hints:*
+
+- Hex color code `#56B4E9`
+- Justification of 1.1
+- Size is 5
+
+```{r}
+#| label: ex-2
+
+# percentage increase data
+perc_increase <- tech_stocks %>%
+  arrange(desc(date)) %>%
+  distinct(company, .keep_all = TRUE) %>%
+  mutate(
+    perc = 100 * (price - index_price) / index_price,
+    label = str_c(round(perc), "%", sep = ""),
+    company = fct_reorder(factor(company), perc)
+  )
+```
+
+::: {.callout-tip icon=false}
+
+## Solution
+```{r}
+ggplot(perc_increase, aes(perc, company)) +
+  geom_col(fill = "#56B4E9") +
+  geom_text(
+    data = perc_increase,
+    aes(x = perc, label = label),
+    hjust = 1.1,
+    size = 5,
+    color = "white"
+  ) +
+  labs(x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  scale_x_continuous(expand = c(0, 0))
+```
+
+:::
+
+## Exercise 3
+
+Using `NU_admission_data.csv` create two separate plots derived from the single plot depicted in `undergraduate-admissions-statistics.pdf` --- this visual and data has been collected from [https://www.adminplan.northwestern.edu/ir/data-book/](https://www.adminplan.northwestern.edu/ir/data-book/). They overlaid two plots on one another by using dual y-axes. 
+
+Create **two separate plots** that display the same information instead of trying to put it all in one single plot --- **stack them** using `patchwork` or `cowplot`. 
+
+There is one major error they make with the bars in their graphic. **Explain what it is.**
+
+::: {.callout-tip icon=false}
+
+## Solution
+```{r}
+#bar graph data frame
+admission <- admission %>% 
+  filter(Year > 1999)
+
+bar_ad <- admission %>%
+  mutate(apps = (Applications - `Admitted students`),
+        b_admit = (`Admitted students` - Matriculants),
+         c_mat = Matriculants) %>%
+  pivot_longer(cols = c(apps, b_admit, c_mat),
+               names_to = "type",
+               values_to = "number") %>%
+  select(Year, type, number)
+
+#bar graph label
+bar_label <- admission %>%
+  select(Year, `Admitted students`, Matriculants, Applications) %>%
+  pivot_longer(cols = -Year, names_to = "type",
+               values_to = "number") %>%
+  mutate(col_label = prettyNum(number, big.mark = (",")),
+         placement = ifelse(type == "Applications", number/2 + 2000, number-400))
+
+#bar graph
+barplot <- ggplot(bar_ad, aes(x = Year, y = number)) +
+  geom_col(width = 0.75, aes(fill = type)) +
+  geom_text(data = bar_label,
+            aes(label = col_label, y = placement),
+            size = 3,
+            color = "black",
+            vjust = 1) +
+  theme_minimal() +
+  labs(y = "Applications",
+       fill = NULL,
+       x = NULL,
+       title = "Northwestern University\nUndergraduate Admissions 2000-2020") +
+  scale_fill_manual(values = c("#9cbb5c", "#c0504d", "#4e81bd"),
+                    labels = c("Applicants", "Admitted", "Matriculants")) +
+  scale_x_continuous(n.breaks = 18, expand = c(.01 ,0)) +
+  scale_y_continuous(labels = scales::label_comma()) +
+  guides(x = guide_axis(angle = 30)) +
+  theme(legend.position = "bottom")
+
+
+#line graph data frame
+line_ad <- admission %>%
+  select(Year, contains("rate")) %>%
+    rename(yield_rate = `Yield Rate`,
+         admission_rate = `Admission Rate`) %>%
+  pivot_longer(cols = -Year,
+               names_to = "type",
+               values_to = "number") 
+
+#line graph label
+line_label <- line_ad %>%
+  mutate(label = str_c(number, "%"),
+         number = case_when(type == "yield_rate" ~ number + 3, type == "admission_rate" ~ number - 3))
+
+#line graph
+linegraph <- ggplot(line_ad, aes(Year, number)) +
+  geom_line(aes(color = type)) +
+  geom_point(aes(shape = type, color = type)) + 
+  geom_text(data = line_label,
+            aes(label = label), size = 3) +
+  theme_minimal() +
+  labs(y = "Rate",
+       color = NULL,
+       shape = NULL) +
+  scale_color_manual(values = c("#c0504d", "#49abc5"),
+                    labels = c("Admission Rate", "Yield Rate")) +
+  scale_shape_manual(values = c(15, 8),
+    labels = c("Admission Rate", "Yield Rate")) +
+  scale_x_continuous(n.breaks = 18, expand = c(.03 ,0)) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  guides(x = guide_axis(angle = 30)) +
+  theme(legend.position = "top")
+
+
+
+
+#combine the graphs
+combine <- barplot / linegraph
+
+combine
+
+#looks the best at the dimensions in the saved file:
+ggsave("admissions_plot.png", plot = combine, width = 13, height = 9)
+```
+**NOTE: THE GRAPH LOOKS MUCH BETTER IN THE SAVED FILE `admissions_plot.pdf`. I SUBMITTED IT WITH THE qmd AND html FILES.**
+:::
+
+Which approach do you find communicates the information better, their single dual y-axes plot or the two separate plot approach? **Why?**
+
+::: {.callout-tip icon=false}
+
+## Solution
+**The major error they make with the bars in the NU graphic is that the made each color bar contain the number on the label, which made double counting errors occur. For example, the number of applications for 2000 was 14,725, then the number of admitted students is 4,827 of the total 14,725 applications, then the matriculated students are a subset of 1,893 of the 14,725 applications. So total there were 14,725 applications, so the bar should go up to 14,725 on the y axis. However, it reaches up to ~21,000. This is because they counted the matriculated students 3 times and the admitted students twice, instead of subtracting to get the correct size of the admitted students and applications boxes.**
+
+**I think the separate plot approach makes the information easier to read, understand, and analyze separately from each other; however, if you're trying to compare the rates with the number of applications/acceptances, then I think the overlayed graph could facilitate that. I believe it depends on the information you're trying to convey. If you want to show that a) the number of applications has risen a lot in the last 20 years and the # of admitted students has decreased and b) as the admission rate decreased the yield rate increased, then the separate plot approach is better because you're emphasizing two different points. On the other hand, if you're trying to convey that around 2009/2010, the admissions landscape here became more competitive due to increased applications and higher yield, then the overlayed graph emphasizes this more because it combines all of the information while the separate graphs keeps the different points separate from each other.**
+:::
+
+*Hints:*
+
+- Form 4 datasets (helps you get organized, but not entirely necessary): 
+    - 1 that has bar chart data, 
+    - 1 that has bar chart label data, 
+    - 1 that has line chart data, and 
+    - 1 that has line chart labels 
+- Consider using `ggsave()` to save the image with a fixed size so it is easier to pick font sizes.
